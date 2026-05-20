@@ -17,14 +17,17 @@ Click Bake, download the result.
 
 ```sh
 pnpm install
-pnpm gen-parser   # one-time; needs kaitai-struct-compiler on PATH
+pnpm gen-parser ../presonus_packagef.ksy   # only when the .ksy changes
 pnpm dev
 pnpm build
 pnpm check
 ```
 
-The Kaitai spec is `../presonus_packagef.ksy`. Re-run `pnpm gen-parser`
-after edits. Install `kaitai-struct-compiler` from <https://kaitai.io/>.
+The Kaitai-generated parser (`src/lib/kaitai/PresonusPackagef.js`) is
+committed, so `pnpm gen-parser` is only needed when the `.ksy` spec
+changes. The `.ksy` lives in the sibling
+[`presonus-packagef-format`](https://github.com/featherbear/presonus-packagef-format)
+repo; `pnpm gen-parser` takes the path to it as a positional argument.
 
 ## Notes
 

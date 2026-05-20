@@ -12,7 +12,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json",
-    "gen-parser": "kaitai-struct-compiler -t javascript --outdir src/lib/kaitai ../presonus_packagef.ksy"
+    "gen-parser": "kaitai-struct-compiler -t javascript --outdir src/lib/kaitai"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
