@@ -29,6 +29,13 @@ const REQUIRED_SKIN_ENTRY = "images/Other/Beard.svg";
  */
 export const ICON_PREFIX_IN_TGZ = "pkg/companion/icons/";
 
+/**
+ * Path of the disclaimer file we drop into the baked tarball alongside
+ * the manifest. Records when the bake happened, what it was baked from,
+ * and that the author claims no liability for the result.
+ */
+export const BAKED_NOTICE_PATH = "pkg/BAKED.txt";
+
 export interface BakeResult {
   /** Re-packed .tgz, ready to be downloaded. */
   blob: Blob;
@@ -139,7 +146,7 @@ export async function bake(inputs: BakeInputs): Promise<BakeResult> {
 
   // 1. Parse + sanity-check the channel-icons input (raw .skin or DLL).
   progress("Parsing channel icons…");
-  const { pkg } = await validateChannelIconsPackagef(channelIconsFile);
+  const { pkg, source } = await validateChannelIconsPackagef(channelIconsFile);
 
   // 2. Unpack the user-supplied tarball + validate manifest.
   progress("Unpacking module .tgz…");
@@ -171,18 +178,36 @@ export async function bake(inputs: BakeInputs): Promise<BakeResult> {
     iconsAdded.set(target, newFile(target, tokenizedBytes));
   }
 
-  // 4. Merge the new icons into the tar file list. Pre-existing entries
-  //    at any of the icon target paths are silently overwritten — the
-  //    bakery is the source of truth for the icons directory.
-  const merged = mergeFiles(tarFiles, iconsAdded);
+  // 4. Add the BAKED.txt notice. Same epoch as the output filename so
+  //    the two timestamps agree.
+  const epoch = Math.floor(Date.now() / 1000);
+  const noticeText = bakedNoticeText({
+    epoch,
+    channelIconsFilename: channelIconsFile.name,
+    channelIconsSource: source,
+    moduleTgzFilename: tgzFile.name,
+    manifest,
+    iconCount: iconsAdded.size,
+  });
+  const noticeFile = newFile(
+    BAKED_NOTICE_PATH,
+    new TextEncoder().encode(noticeText),
+  );
 
-  // 5. Repack and gzip.
+  // 5. Merge the new icons + notice into the tar file list. Pre-existing
+  //    entries at any of these paths are silently overwritten — the
+  //    bakery owns the icons directory and the notice file.
+  const additions = new Map(iconsAdded);
+  additions.set(BAKED_NOTICE_PATH, noticeFile);
+  const merged = mergeFiles(tarFiles, additions);
+
+  // 6. Repack and gzip.
   progress("Packing baked .tgz…");
   const out = await packTgz(merged);
 
   return {
     blob: new Blob([out as BlobPart], { type: "application/gzip" }),
-    filename: bakedFilename(tgzFile.name),
+    filename: bakedFilename(tgzFile.name, epoch),
     manifest,
     iconCount: iconsAdded.size,
   };
@@ -241,8 +266,46 @@ function mergeFiles(original: TarFile[], icons: Map<string, TarFile>): TarFile[]
   return merged;
 }
 
-function bakedFilename(inputName: string): string {
+function bakedFilename(inputName: string, epoch: number): string {
   const base = inputName.replace(/\.tgz$/i, "").replace(/\.tar\.gz$/i, "");
-  const epoch = Math.floor(Date.now() / 1000);
   return `${base}-baked-${epoch}.tgz`;
+}
+
+interface BakedNoticeFields {
+  epoch: number;
+  channelIconsFilename: string;
+  channelIconsSource: ChannelIconsSource;
+  moduleTgzFilename: string;
+  manifest: Manifest;
+  iconCount: number;
+}
+
+function bakedNoticeText(f: BakedNoticeFields): string {
+  const iso = new Date(f.epoch * 1000).toISOString();
+  const sourceLabel =
+    f.channelIconsSource === "dll"
+      ? "Windows DLL (channelicons.skin extracted from RCDATA)"
+      : "raw channelicons.skin";
+  return [
+    `This Bitfocus Companion module has been MODIFIED by an automated`,
+    `bakery tool. It is no longer the upstream module as published; it`,
+    `has had third-party vendor channel icons embedded into it.`,
+    ``,
+    `Baked at:           ${iso} (unix epoch ${f.epoch})`,
+    `Module:             ${f.manifest.shortname}@${f.manifest.version}`,
+    `Source module .tgz: ${f.moduleTgzFilename}`,
+    `Icon source:        ${sourceLabel}`,
+    `Icon source file:   ${f.channelIconsFilename}`,
+    `Icons embedded:     ${f.iconCount}`,
+    ``,
+    `DO NOT REDISTRIBUTE THIS FILE. The embedded icons are vendor`,
+    `assets that you supplied from your own licensed installation; this`,
+    `baked archive is for your personal use only.`,
+    ``,
+    `NO WARRANTY. The author of the bakery tool provides this software`,
+    `and its output as-is, with no warranties of any kind, and claims`,
+    `no liability for any damages, license violations, or other`,
+    `consequences arising from its use or distribution.`,
+    ``,
+  ].join("\n");
 }

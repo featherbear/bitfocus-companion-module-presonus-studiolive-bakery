@@ -122,14 +122,19 @@
 
 <main>
   <header>
-    <h1>Companion module bakery</h1>
+    <h1>PreSonus StudioLive icon bakery for Bitfocus Companion</h1>
     <p class="lede">
-      Combines your PreSonus channel icons (from
-      <code>channelicons.skin</code> on macOS, or the bundled
-      <abbr title="Dynamic-Link Library">DLL</abbr> on Windows) with
-      your <code>presonus-studiolive</code> Companion module
-      <code>.tgz</code>. Output is a personal copy of the module with
-      the icons baked in. Everything runs in your browser.
+      Embeds vendor channel icons into <a
+        href="https://github.com/featherbear/bitfocus-companion-module-presonus-studiolive"
+        target="_blank"
+        rel="noopener noreferrer"
+      ><code>bitfocus-companion-module-presonus-studiolive</code></a>,
+      because we can't ship them to you automatically for legal reasons.
+      You supply your own copy of <code>channelicons.skin</code> (macOS)
+      or <code>studiolivepanel.dll</code> (Windows) — both ship with your
+      PreSonus Universal Control installation; see paths below. The
+      bakery extracts the icons and bakes them into a personal copy of
+      the module. Everything runs in your browser.
     </p>
   </header>
 
@@ -173,7 +178,7 @@
     On Windows, pick <code>studiolivepanel.dll</code> at:<br />
     <code class="path">C:\Program Files\PreSonus\Universal Control\Plugins\studiolivepanel.dll</code>
     <br />The bakery extracts <code>channelicons.skin</code> from the
-    DLL's RCDATA resources automatically.
+    DLL automatically.
   </p>
 
   <section class="actions">
@@ -190,6 +195,14 @@
 
   {#if status}
     <p class="status">{status}</p>
+  {/if}
+  {#if result && downloadUrl}
+    <p class="warn">
+      Do not redistribute the baked <code>.tgz</code>. The embedded icons
+      are vendor assets from your own PreSonus installation; this archive
+      is for your personal use only. A <code>pkg/BAKED.txt</code> notice
+      file recording the bake has been added to the archive.
+    </p>
   {/if}
   {#if error}
     <p class="error">{error}</p>
@@ -271,5 +284,6 @@
   }
 
   .status { color: var(--muted); margin-top: 16px; font-size: 13px; }
+  .warn   { color: var(--error); margin-top: 12px; font-size: 13px; line-height: 1.5; }
   .error  { color: var(--error); margin-top: 16px; font-size: 13px; white-space: pre-wrap; }
 </style>
