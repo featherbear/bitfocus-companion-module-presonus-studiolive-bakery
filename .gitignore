@@ -18,9 +18,6 @@ dist-ssr
 /blob-report/
 /playwright/.cache/
 
-# Generated test fixture
-/tests/fixtures/sample.skin
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
