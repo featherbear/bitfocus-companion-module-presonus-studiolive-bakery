@@ -30,5 +30,5 @@ after edits. Install `kaitai-struct-compiler` from <https://kaitai.io/>.
 
 - SVG fills are rewritten to the token `#deadbe`; the Companion module
   replaces it with the user's chosen color at runtime.
-- Icons land at `pkg/companion/icons/<lowercased-path>.svg`. Source
+- Icons land at `pkg/companion/icons/studiolive/<lowercased-path>.svg`. Source
   paths that collide after normalization are a hard error.

@@ -1,51 +1,127 @@
-:root {
-  --bg: #1e1e22;
-  --panel: #26262c;
-  --panel2: #2d2d34;
-  --fg: #e6e6e6;
-  --muted: #9aa0a6;
-  --accent: #6aa9ff;
-  --accent2: #ffb86b;
-  --border: #3a3a42;
-  --error: #ff6b6b;
+/* ---------------------------------------------------------------------------
+ * Design tokens. Light is the default; dark is applied via prefers-color-scheme.
+ * Theme is purely system-driven — no toggle. Colors are gathered into a
+ * single block per scheme so swaps are easy.
+ * ------------------------------------------------------------------------- */
 
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  color-scheme: dark;
+:root {
+  /* Brand: bakery palette — crust, caramel, butter */
+  --accent: #8a4a23;       /* dark crust brown */
+  --accent-2: #c97a3a;     /* caramel */
+  --accent-3: #e6b266;     /* warm butter / honey */
+  --gradient: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 55%, var(--accent-3) 100%);
+
+  /* Surface (light) — warm cream paper */
+  --bg: #f7f1e6;
+  --bg-elev: #fffaf1;
+  --bg-sunken: #efe6d4;
+  --fg: #2a1d10;
+  --fg-muted: #6b5640;
+  --fg-faint: #a3917a;
+  --border: #e2d4ba;
+  --border-strong: #c8b694;
+
+  --ok: #4f7a1f;
+  --ok-bg: #e8f1d4;
+  --warn: #a35c10;
+  --warn-bg: #f8e4c0;
+  --err: #a8401f;
+  --err-bg: #f6dccf;
+
+  --shadow-sm: 0 1px 2px rgba(20, 20, 30, 0.04), 0 2px 6px rgba(20, 20, 30, 0.04);
+  --shadow-md: 0 4px 12px rgba(20, 20, 30, 0.06), 0 12px 32px rgba(20, 20, 30, 0.08);
+  --shadow-glow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+
+  --radius: 14px;
+  --radius-sm: 8px;
+  --radius-lg: 22px;
+
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  color-scheme: light;
 }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Dark: rye/pumpernickel — deep roasted browns */
+    --bg: #15100a;
+    --bg-elev: #1e1610;
+    --bg-sunken: #100a05;
+    --fg: #f1e3cc;
+    --fg-muted: #b39a7a;
+    --fg-faint: #6f5a3f;
+    --border: #2c2218;
+    --border-strong: #463524;
+
+    --ok: #b6d97a;
+    --ok-bg: rgba(182, 217, 122, 0.12);
+    --warn: #e6b266;
+    --warn-bg: rgba(230, 178, 102, 0.14);
+    --err: #e88562;
+    --err-bg: rgba(232, 133, 98, 0.14);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.5);
+
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
 
 html, body, #app {
   margin: 0;
-  height: 100%;
+  min-height: 100%;
+}
+
+body {
   background: var(--bg);
   color: var(--fg);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-#app {
-  display: flex;
-  flex-direction: column;
+/* Soft ambient gradient behind everything */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(60vw 60vw at 10% -10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
+    radial-gradient(50vw 50vw at 110% 10%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 55%),
+    radial-gradient(70vw 50vw at 50% 110%, color-mix(in srgb, var(--accent-3) 10%, transparent), transparent 60%);
+  pointer-events: none;
 }
+
+code, .mono {
+  font-family: ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono",
+    "Roboto Mono", Consolas, monospace;
+  font-size: 0.92em;
+}
+
+code {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+a {
+  color: var(--accent);
+  text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  text-underline-offset: 2px;
+}
+a:hover { text-decoration-color: var(--accent); }
 
 button {
-  background: var(--panel2);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
-  cursor: pointer;
   font-family: inherit;
+  font-size: inherit;
 }
-button:hover { border-color: var(--accent); }
-button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-label.btn {
-  background: var(--panel2);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
-  cursor: pointer;
-  display: inline-block;
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
 }
-label.btn:hover { border-color: var(--accent); }

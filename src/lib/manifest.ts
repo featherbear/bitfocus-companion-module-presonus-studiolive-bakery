@@ -5,11 +5,11 @@ import type { TarFile } from "./tgz";
 /** Path within the tarball where Companion modules declare themselves. */
 export const MANIFEST_PATH = "pkg/companion/manifest.json";
 
-/** Required `shortname` value. Anything else means the user uploaded the wrong module. */
-export const REQUIRED_SHORTNAME = "presonus-studiolive";
+/** Required `id` value. Anything else means the user uploaded the wrong module. */
+export const REQUIRED_ID = "bitfocus-presonus-studiolive";
 
 export interface Manifest {
-  shortname: string;
+  id: string;
   version: string;
 }
 
@@ -39,10 +39,10 @@ export function validateManifest(files: TarFile[]): Manifest {
   }
   const m = parsed as Record<string, unknown>;
 
-  if (m.shortname !== REQUIRED_SHORTNAME) {
+  if (m.id !== REQUIRED_ID) {
     throw new Error(
-      `Wrong module: expected shortname "${REQUIRED_SHORTNAME}", ` +
-      `got "${String(m.shortname)}".`,
+      `Wrong module: expected id "${REQUIRED_ID}", ` +
+      `got "${String(m.id)}".`,
     );
   }
 
@@ -53,7 +53,7 @@ export function validateManifest(files: TarFile[]): Manifest {
     );
   }
 
-  return { shortname: m.shortname, version: m.version };
+  return { id: m.id, version: m.version };
 }
 
 /**

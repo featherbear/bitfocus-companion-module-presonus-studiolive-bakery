@@ -27,7 +27,7 @@ const REQUIRED_SKIN_ENTRY = "images/Other/Beard.svg";
  * The runtime side of the Companion module is expected to load from
  * the same prefix. Subject to change as the module side firms up.
  */
-export const ICON_PREFIX_IN_TGZ = "pkg/companion/icons/";
+export const ICON_PREFIX_IN_TGZ = "pkg/companion/icons/studiolive/";
 
 /**
  * Path of the disclaimer file we drop into the baked tarball alongside
@@ -218,17 +218,17 @@ export async function bake(inputs: BakeInputs): Promise<BakeResult> {
 /**
  * Translate a source path inside the .skin (e.g. `images/Brass/Brass Section.svg`)
  * to the destination path inside the tarball (e.g.
- * `pkg/companion/icons/brass/brass-section.svg`).
+ * `pkg/companion/icons/studiolive/brass/brasssection.svg`).
  *
- * Convention: lowercase everything; replace runs of whitespace with `-`.
- * Other punctuation (including dots) is left as-is. Collisions are
+ * Convention: lowercase everything; strip whitespace. Other punctuation
+ * (including dots and parentheses) is left as-is. Collisions are
  * rejected by the caller.
  */
 export function iconTargetPath(skinPath: string): string {
   const stripped = skinPath.replace(/^images\//, "");
   const normalized = stripped
     .split("/")
-    .map(seg => seg.toLowerCase().replace(/\s+/g, "-"))
+    .map(seg => seg.toLowerCase().replace(/\s+/g, ""))
     .join("/");
   return ICON_PREFIX_IN_TGZ + normalized;
 }
@@ -292,17 +292,16 @@ function bakedNoticeText(f: BakedNoticeFields): string {
     `has had third-party vendor channel icons embedded into it.`,
     ``,
     `Baked at:           ${iso} (unix epoch ${f.epoch})`,
-    `Module:             ${f.manifest.shortname}@${f.manifest.version}`,
+    `Module:             ${f.manifest.id}@${f.manifest.version}`,
     `Source module .tgz: ${f.moduleTgzFilename}`,
     `Icon source:        ${sourceLabel}`,
     `Icon source file:   ${f.channelIconsFilename}`,
     `Icons embedded:     ${f.iconCount}`,
     ``,
     `DO NOT REDISTRIBUTE THIS FILE. The embedded icons are vendor`,
-    `assets that you supplied from your own licensed installation; this`,
-    `baked archive is for your personal use only.`,
+    `assets that you supplied from your own licensed installation.`,
     ``,
-    `NO WARRANTY. The author of the bakery tool provides this software`,
+    `NO WARRANTY. The author of this module provides this software`,
     `and its output as-is, with no warranties of any kind, and claims`,
     `no liability for any damages, license violations, or other`,
     `consequences arising from its use or distribution.`,
