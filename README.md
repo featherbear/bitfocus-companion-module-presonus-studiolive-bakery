@@ -1,5 +1,7 @@
 # bitfocus-companion-module-presonus-studiolive-bakery
 
+> https://featherbear.cc/bitfocus-companion-module-presonus-studiolive-bakery/
+
 In-browser tool that bakes PreSonus channel icons into a Bitfocus
 Companion module `.tgz`. Everything runs client-side.
 
@@ -7,9 +9,9 @@ Companion module `.tgz`. Everything runs client-side.
 
 Pick two files:
 
-1. Your channel-icons source — either `channelicons.skin` (macOS) or
-   `studiolivepanel.dll` (Windows, which bundles the skin).
-2. A `presonus-studiolive` Companion module `.tgz`.
+1. Your channel icons source — either `channelicons.skin` (macOS) or
+   `studiolivepanel.dll` (Windows).
+2. A [`presonus-studiolive`](https://github.com/featherbear/bitfocus-companion-module-presonus-studiolive/) Bitfocus Companion module `.tgz`.
 
 Click Bake, download the result.
 
@@ -33,5 +35,5 @@ repo; `pnpm gen-parser` takes the path to it as a positional argument.
 
 - SVG fills are rewritten to the token `#deadbe`; the Companion module
   replaces it with the user's chosen color at runtime.
-- Icons land at `pkg/companion/icons/studiolive/<lowercased-path>.svg`. Source
-  paths that collide after normalization are a hard error.
+- Icons land at `pkg/companion/icons/studiolive/<lowercased-path>.svg`.
+  - Source paths that collide after normalization are a hard error.
