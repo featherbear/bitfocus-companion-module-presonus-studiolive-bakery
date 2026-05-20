@@ -7,7 +7,7 @@
   } from "./lib/bakery";
   import type { Manifest } from "./lib/manifest";
 
-  let skinFile = $state<File | null>(null);
+  let channelIconsFile = $state<File | null>(null);
   let tgzFile = $state<File | null>(null);
 
   type CheckState =
@@ -16,7 +16,7 @@
     | { kind: "ok"; detail: string }
     | { kind: "error"; message: string };
 
-  let skinCheck = $state<CheckState>({ kind: "idle" });
+  let channelIconsCheck = $state<CheckState>({ kind: "idle" });
   let tgzCheck = $state<CheckState>({ kind: "idle" });
   let tgzManifest = $state<Manifest | null>(null);
 
@@ -28,7 +28,7 @@
 
   // Each input gets a token; if the user picks a new file mid-check
   // we drop the in-flight result on the floor.
-  let skinToken = 0;
+  let channelIconsToken = 0;
   let tgzToken = 0;
 
   function clearResult() {
@@ -37,27 +37,28 @@
     result = null;
   }
 
-  async function onSkinPicked(e: Event) {
-    skinFile = (e.target as HTMLInputElement).files?.[0] ?? null;
+  async function onChannelIconsPicked(e: Event) {
+    channelIconsFile = (e.target as HTMLInputElement).files?.[0] ?? null;
     clearResult();
     error = "";
     status = "";
-    if (!skinFile) {
-      skinCheck = { kind: "idle" };
+    if (!channelIconsFile) {
+      channelIconsCheck = { kind: "idle" };
       return;
     }
-    const myToken = ++skinToken;
-    skinCheck = { kind: "checking" };
+    const myToken = ++channelIconsToken;
+    channelIconsCheck = { kind: "checking" };
     try {
-      const { iconCount } = await validateChannelIconsPackagef(skinFile);
-      if (myToken !== skinToken) return;
-      skinCheck = {
+      const { iconCount, source } = await validateChannelIconsPackagef(channelIconsFile);
+      if (myToken !== channelIconsToken) return;
+      const sourceLabel = source === "dll" ? "DLL" : ".skin";
+      channelIconsCheck = {
         kind: "ok",
-        detail: `${iconCount} icon${iconCount === 1 ? "" : "s"} found`,
+        detail: `${sourceLabel}, ${iconCount} icon${iconCount === 1 ? "" : "s"}`,
       };
     } catch (err) {
-      if (myToken !== skinToken) return;
-      skinCheck = { kind: "error", message: (err as Error).message };
+      if (myToken !== channelIconsToken) return;
+      channelIconsCheck = { kind: "error", message: (err as Error).message };
     }
   }
 
@@ -88,14 +89,14 @@
   }
 
   async function onBake() {
-    if (!skinFile || !tgzFile) return;
+    if (!channelIconsFile || !tgzFile) return;
     busy = true;
     error = "";
     status = "";
     clearResult();
     try {
       const r = await bake({
-        skinFile,
+        channelIconsFile,
         tgzFile,
         onProgress: msg => (status = msg),
       });
@@ -111,9 +112,9 @@
   }
 
   const canBake = $derived(
-    !!skinFile &&
+    !!channelIconsFile &&
       !!tgzFile &&
-      skinCheck.kind === "ok" &&
+      channelIconsCheck.kind === "ok" &&
       tgzCheck.kind === "ok" &&
       !busy,
   );
@@ -123,24 +124,31 @@
   <header>
     <h1>Companion module bakery</h1>
     <p class="lede">
-      Combines your <code>channelicons.skin</code> with your
-      <code>presonus-studiolive</code> Companion module
-      <code>.tgz</code>. Output is a personal copy of the module with the
-      icons baked in. Everything runs in your browser.
+      Combines your PreSonus channel icons (from
+      <code>channelicons.skin</code> on macOS, or the bundled
+      <abbr title="Dynamic-Link Library">DLL</abbr> on Windows) with
+      your <code>presonus-studiolive</code> Companion module
+      <code>.tgz</code>. Output is a personal copy of the module with
+      the icons baked in. Everything runs in your browser.
     </p>
   </header>
 
   <section class="picker-row">
     <label class="picker">
-      <span class="picker-label">channelicons.skin</span>
-      <input type="file" accept=".skin" onchange={onSkinPicked} disabled={busy} />
-      <span class="filename">{skinFile?.name ?? "no file selected"}</span>
-      {#if skinCheck.kind === "checking"}
+      <span class="picker-label">channel icons</span>
+      <input
+        type="file"
+        accept=".skin,.dll"
+        onchange={onChannelIconsPicked}
+        disabled={busy}
+      />
+      <span class="filename">{channelIconsFile?.name ?? "no file selected"}</span>
+      {#if channelIconsCheck.kind === "checking"}
         <span class="check checking">Checking…</span>
-      {:else if skinCheck.kind === "ok"}
-        <span class="check ok">OK — {skinCheck.detail}</span>
-      {:else if skinCheck.kind === "error"}
-        <span class="check err">{skinCheck.message}</span>
+      {:else if channelIconsCheck.kind === "ok"}
+        <span class="check ok">OK — {channelIconsCheck.detail}</span>
+      {:else if channelIconsCheck.kind === "error"}
+        <span class="check err">{channelIconsCheck.message}</span>
       {/if}
     </label>
 
@@ -159,8 +167,13 @@
   </section>
 
   <p class="hint">
-    On macOS, <code>channelicons.skin</code> is at:<br />
+    On macOS, pick <code>channelicons.skin</code> at:<br />
     <code class="path">/Applications/Universal Control.app/Contents/PlugIns/studiolivepanel.bundle/Contents/Resources/channelicons.skin</code>
+    <br /><br />
+    On Windows, pick <code>studiolivepanel.dll</code> at:<br />
+    <code class="path">C:\Program Files\PreSonus\Universal Control\Plugins\studiolivepanel.dll</code>
+    <br />The bakery extracts <code>channelicons.skin</code> from the
+    DLL's RCDATA resources automatically.
   </p>
 
   <section class="actions">

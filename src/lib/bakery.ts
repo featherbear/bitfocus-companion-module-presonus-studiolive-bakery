@@ -13,6 +13,11 @@ import {
 import { tokenizeSvgFills } from "./svg-tokenize";
 import { newFile, packTgz, unpackTgz, type TarFile } from "./tgz";
 import { validateManifest, type Manifest } from "./manifest";
+import {
+  extractChannelIconsFromDll,
+  looksLikePE,
+  looksLikePackagef,
+} from "./dll";
 
 /** The .skin entry we use as a sanity check. */
 const REQUIRED_SKIN_ENTRY = "images/Other/Beard.svg";
@@ -36,16 +41,30 @@ export interface BakeResult {
 }
 
 export interface BakeInputs {
-  skinFile: File;
+  /**
+   * Either a `.skin` file or a Windows DLL that bundles
+   * `channelicons.skin` as an RCDATA resource.
+   */
+  channelIconsFile: File;
   tgzFile: File;
-  /** Optional progress callback. Phases: parse, validate, extract, repack. */
+  /** Optional progress callback. */
   onProgress?: (phase: string) => void;
 }
+
+/**
+ * Where the PACKAGEF bytes came from.
+ *
+ * - `"skin"`: the user picked a raw `channelicons.skin` (macOS path).
+ * - `"dll"`: the user picked a Windows DLL and we extracted the
+ *   embedded RCDATA resource.
+ */
+export type ChannelIconsSource = "skin" | "dll";
 
 /** Result of an early skin-file sanity check. */
 export interface ChannelIconsPackagefCheck {
   pkg: SkinPackage;
   iconCount: number;
+  source: ChannelIconsSource;
 }
 
 /** Result of an early tarball sanity check. */
@@ -55,22 +74,51 @@ export interface ModuleTgzCheck {
 }
 
 /**
- * Parse the .skin and confirm it looks like channelicons.skin. Throws
- * with a user-actionable message if not. Cheap enough to run on every
- * file pick — no network, no big allocations beyond the file itself.
+ * Validate a user-supplied file holding the channel-icons PACKAGEF
+ * container, in either of two forms:
+ *
+ * - A raw `channelicons.skin` file (macOS).
+ * - A PreSonus DLL (Windows) that bundles `channelicons.skin` as an
+ *   RCDATA resource — we sniff for "MZ" and extract via pe-library.
+ *
+ * Throws with a user-actionable message if the file is neither, or if
+ * the parsed PACKAGEF doesn't contain the expected sentinel entry.
  */
 export async function validateChannelIconsPackagef(
-  skinFile: File,
+  file: File,
 ): Promise<ChannelIconsPackagefCheck> {
-  const pkg = parseSkin(await skinFile.arrayBuffer());
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  let packagefBytes: Uint8Array;
+  let source: ChannelIconsSource;
+  if (looksLikePackagef(bytes)) {
+    packagefBytes = bytes;
+    source = "skin";
+  } else if (looksLikePE(bytes)) {
+    packagefBytes = extractChannelIconsFromDll(bytes);
+    source = "dll";
+  } else {
+    throw new Error(
+      `File is neither a PACKAGEF (.skin) container nor a Windows DLL ` +
+      `(no "PACKAGEF" or "MZ" header).`,
+    );
+  }
+
+  // parseSkin wants an ArrayBuffer; pass an exact-sized one.
+  const ab = packagefBytes.buffer.slice(
+    packagefBytes.byteOffset,
+    packagefBytes.byteOffset + packagefBytes.byteLength,
+  ) as ArrayBuffer;
+  const pkg = parseSkin(ab);
   assertHasSkinEntry(pkg.root, REQUIRED_SKIN_ENTRY);
+
   let iconCount = 0;
   for (const { path } of walk(pkg.root)) {
     if (path.startsWith("images/") && path.toLowerCase().endsWith(".svg")) {
       iconCount++;
     }
   }
-  return { pkg, iconCount };
+  return { pkg, iconCount, source };
 }
 
 /**
@@ -86,12 +134,12 @@ export async function validateModuleTgz(tgzFile: File): Promise<ModuleTgzCheck> 
 }
 
 export async function bake(inputs: BakeInputs): Promise<BakeResult> {
-  const { skinFile, tgzFile, onProgress } = inputs;
+  const { channelIconsFile, tgzFile, onProgress } = inputs;
   const progress = (s: string) => onProgress?.(s);
 
-  // 1. Parse and sanity-check the .skin.
-  progress("Parsing .skin container…");
-  const { pkg } = await validateChannelIconsPackagef(skinFile);
+  // 1. Parse + sanity-check the channel-icons input (raw .skin or DLL).
+  progress("Parsing channel icons…");
+  const { pkg } = await validateChannelIconsPackagef(channelIconsFile);
 
   // 2. Unpack the user-supplied tarball + validate manifest.
   progress("Unpacking module .tgz…");
