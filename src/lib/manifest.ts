@@ -3,7 +3,7 @@
 import type { TarFile } from "./tgz";
 
 /** Path within the tarball where Companion modules declare themselves. */
-export const MANIFEST_PATH = "package/companion/manifest.json";
+export const MANIFEST_PATH = "pkg/companion/manifest.json";
 
 /** Required `shortname` value. Anything else means the user uploaded the wrong module. */
 export const REQUIRED_SHORTNAME = "presonus-studiolive";

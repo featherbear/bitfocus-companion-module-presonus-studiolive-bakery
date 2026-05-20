@@ -27,7 +27,7 @@ const REQUIRED_SKIN_ENTRY = "images/Other/Beard.svg";
  * The runtime side of the Companion module is expected to load from
  * the same prefix. Subject to change as the module side firms up.
  */
-export const ICON_PREFIX_IN_TGZ = "package/companion/icons/";
+export const ICON_PREFIX_IN_TGZ = "pkg/companion/icons/";
 
 export interface BakeResult {
   /** Re-packed .tgz, ready to be downloaded. */
@@ -193,7 +193,7 @@ export async function bake(inputs: BakeInputs): Promise<BakeResult> {
 /**
  * Translate a source path inside the .skin (e.g. `images/Brass/Brass Section.svg`)
  * to the destination path inside the tarball (e.g.
- * `package/companion/icons/brass/brass-section.svg`).
+ * `pkg/companion/icons/brass/brass-section.svg`).
  *
  * Convention: lowercase everything; replace runs of whitespace with `-`.
  * Other punctuation (including dots) is left as-is. Collisions are
