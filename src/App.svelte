@@ -416,21 +416,23 @@
       {:else}
         <div class="step-summary-row">
           <button class="step-summary" type="button" onclick={() => openStep(1)} disabled={s1 === "locked"}>
-            <span class="summary-title">Channel icons file
-              {#if s1 === "done" && channelIconsCheck.kind === "ok"}
-                <span class="summary-meta">{channelIconsCheck.detail}</span>
+            <span class="summary-text">
+              <span class="summary-title">Channel icons file
+                {#if s1 === "done" && channelIconsCheck.kind === "ok"}
+                  <span class="summary-meta">{channelIconsCheck.detail}</span>
+                {/if}
+              </span>
+              {#if s1 === "done" && channelIconsFile}
+                <span class="summary-detail">{channelIconsFile.name}</span>
               {/if}
             </span>
-            {#if s1 === "done" && channelIconsFile}
-              <span class="summary-detail">{channelIconsFile.name}</span>
-            {/if}
-            {#if s1 === "done"}<span class="summary-action">Change</span>{/if}
           </button>
-          {#if s1 === "done" && channelIconsPkg}
-            <span class="summary-actions-sep" aria-hidden="true">/</span>
-            <button class="summary-browse" type="button" onclick={() => openIconViewer(channelIconsPkg!)}>
-              Browse
-            </button>
+          {#if s1 === "done"}
+            {#if channelIconsPkg}
+              <button class="summary-browse" type="button" onclick={() => openIconViewer(channelIconsPkg!)}>Browse</button>
+              <span class="summary-actions-sep" aria-hidden="true">/</span>
+            {/if}
+            <span class="summary-action" onclick={() => openStep(1)} role="presentation">Change</span>
           {/if}
         </div>
       {/if}
@@ -737,6 +739,7 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
+    overflow: hidden;
     border: 1px solid var(--border-strong);
     background: var(--bg-sunken);
     color: var(--fg-muted);
@@ -753,13 +756,13 @@
     height: 40px;
     background: var(--gradient);
     color: white;
-    border-color: transparent;
+    border: none;
     box-shadow: var(--shadow-glow);
   }
   .state-done .step-marker {
     background: var(--gradient);
     color: white;
-    border-color: transparent;
+    border: none;
   }
   .state-locked .step-marker {
     background: transparent;
@@ -835,6 +838,7 @@
     text-decoration: underline;
     text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
     text-underline-offset: 2px;
+    flex-shrink: 0;
   }
   .summary-browse {
     background: none;
@@ -849,12 +853,18 @@
     text-decoration: underline;
     text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
     text-underline-offset: 2px;
+    flex-shrink: 0;
+  }
+  .summary-browse:hover,
+  .summary-action:hover {
+    text-decoration-color: var(--accent);
   }
   .summary-actions-sep {
     color: var(--fg-faint);
     font-size: 12px;
     font-weight: 400;
     user-select: none;
+    flex-shrink: 0;
   }
   .step-summary-row {
     display: flex;
@@ -865,10 +875,17 @@
     flex: 1;
     min-width: 0;
   }
-  .step-summary:hover:not(:disabled) .summary-action {
-    text-decoration-color: var(--accent);
+  /* When inside the summary row the step-summary only needs to show text, no action column */
+  .step-summary-row .step-summary {
+    display: block;
   }
-  .summary-browse:hover {
+  .summary-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .step-summary:hover:not(:disabled) ~ .summary-action {
     text-decoration-color: var(--accent);
   }
   .step-hint {
