@@ -5,6 +5,7 @@
     validateModuleTgz,
     type BakeResult,
   } from "./lib/bakery";
+  import { walk, readFileBytes, type SkinPackage } from "./lib/packagef";
   import type { Manifest } from "./lib/manifest";
 
   // ---------- platform detection ------------------------------------------
@@ -33,6 +34,7 @@
     | { kind: "error"; message: string };
 
   let channelIconsCheck = $state<CheckState>({ kind: "idle" });
+  let channelIconsPkg = $state<SkinPackage | null>(null);
   let tgzCheck = $state<CheckState>({ kind: "idle" });
   let tgzManifest = $state<Manifest | null>(null);
 
@@ -45,6 +47,88 @@
   // Per-input token so a fast re-pick supersedes any in-flight check.
   let channelIconsToken = 0;
   let tgzToken = 0;
+
+  // ---------- icon viewer -------------------------------------------------
+
+  interface IconEntry {
+    path: string;       // e.g. "images/Brass/Trumpet.svg"
+    group: string;      // e.g. "Brass"
+    name: string;       // e.g. "Trumpet.svg"
+    svgText: string;    // decoded SVG markup
+  }
+
+  let iconViewerOpen = $state(false);
+  let iconViewerLoading = $state(false);
+  let iconViewerIcons = $state<IconEntry[]>([]);
+  let iconViewerSearch = $state("");
+  // The SkinPackage we loaded icons from — so we can detect when it changes.
+  let iconViewerPkg = $state<SkinPackage | null>(null);
+
+  const iconViewerFiltered = $derived(
+    iconViewerSearch.trim() === ""
+      ? iconViewerIcons
+      : (() => {
+          const q = iconViewerSearch.trim().toLowerCase();
+          return iconViewerIcons.filter(
+            i => i.name.toLowerCase().includes(q) || i.group.toLowerCase().includes(q),
+          );
+        })(),
+  );
+
+  // Group the filtered icons by their folder name.
+  const iconViewerGroups = $derived(
+    (() => {
+      const map = new Map<string, IconEntry[]>();
+      for (const icon of iconViewerFiltered) {
+        const list = map.get(icon.group);
+        if (list) list.push(icon);
+        else map.set(icon.group, [icon]);
+      }
+      return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+    })(),
+  );
+
+  async function openIconViewer(pkg: SkinPackage) {
+    iconViewerOpen = true;
+    iconViewerSearch = "";
+    // Only reload if the package has changed.
+    if (pkg === iconViewerPkg) return;
+    iconViewerPkg = pkg;
+    iconViewerIcons = [];
+    iconViewerLoading = true;
+    const decoder = new TextDecoder("utf-8");
+    const icons: IconEntry[] = [];
+    for (const { path, entry } of walk(pkg.root)) {
+      if (!path.startsWith("images/") || !path.toLowerCase().endsWith(".svg")) continue;
+      const bytes = await readFileBytes(entry);
+      const rawSvg = decoder.decode(bytes);
+      // Normalise the SVG for preview: strip all fill/stroke/style attributes
+      // and <style> blocks so the icon renders in the current foreground colour
+      // via CSS `color: var(--fg)` on the container.
+      const svgText = rawSvg
+        .replace(/<style[\s\S]*?<\/style>/gi, "")
+        .replace(/\s(fill|stroke|style)="[^"]*"/gi, "");
+      const parts = path.slice("images/".length).split("/");
+      const group = parts.length > 1 ? parts[0] : "Other";
+      const name = parts[parts.length - 1];
+      icons.push({ path, group, name, svgText });
+    }
+    icons.sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
+    iconViewerIcons = icons;
+    iconViewerLoading = false;
+  }
+
+  function closeIconViewer() {
+    iconViewerOpen = false;
+  }
+
+  function onIconViewerKeydown(e: KeyboardEvent) {
+    if (iconViewerOpen && e.key === "Escape") closeIconViewer();
+  }
+
+  function onIconViewerBackdropClick(e: MouseEvent) {
+    if (e.target === e.currentTarget) closeIconViewer();
+  }
 
   function clearResult() {
     if (downloadUrl) URL.revokeObjectURL(downloadUrl);
@@ -101,20 +185,23 @@
     status = "";
     if (!channelIconsFile) {
       channelIconsCheck = { kind: "idle" };
+      channelIconsPkg = null;
       return;
     }
     const myToken = ++channelIconsToken;
     channelIconsCheck = { kind: "checking" };
     try {
-      const { iconCount, source } = await validateChannelIconsPackagef(channelIconsFile);
+      const { iconCount, source, pkg } = await validateChannelIconsPackagef(channelIconsFile);
       if (myToken !== channelIconsToken) return;
       const sourceLabel = source === "dll" ? "DLL" : ".skin";
+      channelIconsPkg = pkg;
       channelIconsCheck = {
         kind: "ok",
         detail: `${sourceLabel} \u00b7 ${iconCount} icon${iconCount === 1 ? "" : "s"}`,
       };
     } catch (err) {
       if (myToken !== channelIconsToken) return;
+      channelIconsPkg = null;
       channelIconsCheck = { kind: "error", message: (err as Error).message };
     }
   }
@@ -230,6 +317,7 @@
 </script>
 
 <svelte:document ondragover={onDocumentDragOver} ondrop={onDocumentDrop} />
+<svelte:window onkeydown={onIconViewerKeydown} />
 
 <main>
   <header class="hero">
@@ -310,26 +398,41 @@
               </span>
             </span>
           </label>
-          {#if isReopened(1, step1Ok)}
+          {#if isReopened(1, step1Ok) || step1Ok}
             <div class="step-actions">
-              <button class="btn-ghost" type="button" onclick={closeStep}>
-                Done &mdash; keep current file
-              </button>
+              {#if step1Ok && channelIconsPkg}
+                <button class="btn-ghost" type="button" onclick={() => openIconViewer(channelIconsPkg!)}>
+                  Browse icons
+                </button>
+              {/if}
+              {#if isReopened(1, step1Ok)}
+                <button class="btn-ghost" type="button" onclick={closeStep}>
+                  Done - keep current file
+                </button>
+              {/if}
             </div>
           {/if}
         </div>
       {:else}
-        <button class="step-summary" type="button" onclick={() => openStep(1)} disabled={s1 === "locked"}>
-          <span class="summary-title">Channel icons file
-            {#if s1 === "done" && channelIconsCheck.kind === "ok"}
-              <span class="summary-meta">{channelIconsCheck.detail}</span>
+        <div class="step-summary-row">
+          <button class="step-summary" type="button" onclick={() => openStep(1)} disabled={s1 === "locked"}>
+            <span class="summary-title">Channel icons file
+              {#if s1 === "done" && channelIconsCheck.kind === "ok"}
+                <span class="summary-meta">{channelIconsCheck.detail}</span>
+              {/if}
+            </span>
+            {#if s1 === "done" && channelIconsFile}
+              <span class="summary-detail">{channelIconsFile.name}</span>
             {/if}
-          </span>
-          {#if s1 === "done" && channelIconsFile}
-            <span class="summary-detail">{channelIconsFile.name}</span>
+            {#if s1 === "done"}<span class="summary-action">Change</span>{/if}
+          </button>
+          {#if s1 === "done" && channelIconsPkg}
+            <span class="summary-actions-sep" aria-hidden="true">/</span>
+            <button class="summary-browse" type="button" onclick={() => openIconViewer(channelIconsPkg!)}>
+              Browse
+            </button>
           {/if}
-          {#if s1 === "done"}<span class="summary-action">Change</span>{/if}
-        </button>
+        </div>
       {/if}
     </li>
 
@@ -384,7 +487,7 @@
           {#if isReopened(2, step2Ok)}
             <div class="step-actions">
               <button class="btn-ghost" type="button" onclick={closeStep}>
-                Done &mdash; keep current file
+                Done - keep current file
               </button>
             </div>
           {/if}
@@ -430,7 +533,7 @@
           {#if isReopened(3, downloadReady) && !busy}
             <div class="step-actions">
               <button class="btn-ghost" type="button" onclick={closeStep}>
-                Cancel &mdash; keep current bake
+                Cancel - keep current bake
               </button>
             </div>
           {/if}
@@ -482,6 +585,67 @@
     <p>Everything runs locally. Nothing leaves your browser.</p>
   </footer>
 </main>
+
+{#if iconViewerOpen}
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <div
+    class="modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Icon browser"
+    onclick={onIconViewerBackdropClick}
+  >
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Icon browser</h2>
+        <input
+          class="modal-search"
+          type="search"
+          placeholder="Search icons…"
+          bind:value={iconViewerSearch}
+          autocomplete="off"
+          spellcheck="false"
+          autofocus
+        />
+        <button class="modal-close" type="button" onclick={closeIconViewer} aria-label="Close">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        {#if iconViewerLoading}
+          <p class="modal-empty">Loading icons…</p>
+        {:else if iconViewerGroups.length === 0}
+          <p class="modal-empty">No icons match "{iconViewerSearch}".</p>
+        {:else}
+          {#each iconViewerGroups as [group, icons]}
+            <div class="icon-group">
+              <h3 class="icon-group-label">{group}</h3>
+              <div class="icon-grid">
+                {#each icons as icon}
+                  <div class="icon-tile" title={icon.name.replace(/\.svg$/i, "")}>
+                    <div class="icon-preview">
+                      <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                      {@html icon.svgText}
+                    </div>
+                    <span class="icon-name">{icon.name.replace(/\.svg$/i, "")}</span>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        {/if}
+      </div>
+
+      <div class="modal-footer">
+        {iconViewerIcons.length} icon{iconViewerIcons.length === 1 ? "" : "s"} total
+        {#if iconViewerSearch.trim()}
+          &nbsp;&middot;&nbsp; {iconViewerFiltered.length} match{iconViewerFiltered.length === 1 ? "" : "es"}
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   main {
@@ -665,9 +829,6 @@
     white-space: nowrap;
   }
   .summary-action {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    align-self: center;
     color: var(--accent);
     font-size: 13px;
     font-weight: 600;
@@ -675,7 +836,39 @@
     text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
     text-underline-offset: 2px;
   }
+  .summary-browse {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+    text-underline-offset: 2px;
+  }
+  .summary-actions-sep {
+    color: var(--fg-faint);
+    font-size: 12px;
+    font-weight: 400;
+    user-select: none;
+  }
+  .step-summary-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .step-summary-row .step-summary {
+    flex: 1;
+    min-width: 0;
+  }
   .step-summary:hover:not(:disabled) .summary-action {
+    text-decoration-color: var(--accent);
+  }
+  .summary-browse:hover {
     text-decoration-color: var(--accent);
   }
   .step-hint {
@@ -867,5 +1060,179 @@
     }
     .step-marker { width: 32px; height: 32px; font-size: 13px; }
     .filebox { padding: 14px; }
+    .modal { width: 100%; height: 100%; max-width: 100%; border-radius: 0; }
+    .icon-grid { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
+  }
+
+  /* ---------------- btn-ghost small variant ---------------- */
+  .btn-ghost-sm {
+    padding: 5px 12px;
+    font-size: 12px;
+  }
+
+  /* ---------------- icon viewer modal ---------------- */
+  :global(.modal-backdrop) {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    backdrop-filter: blur(2px);
+  }
+
+  :global(.modal) {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    width: 100%;
+    max-width: 760px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  :global(.modal-header) {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  :global(.modal-title) {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--fg);
+    flex-shrink: 0;
+  }
+
+  :global(.modal-search) {
+    flex: 1;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 13.5px;
+    font-family: inherit;
+    color: var(--fg);
+    outline: none;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+    min-width: 0;
+  }
+  :global(.modal-search:focus) {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-glow);
+  }
+  :global(.modal-search::placeholder) { color: var(--fg-faint); }
+
+  :global(.modal-close) {
+    background: none;
+    border: none;
+    color: var(--fg-muted);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    transition: color 120ms ease, background 120ms ease;
+  }
+  :global(.modal-close:hover) {
+    color: var(--fg);
+    background: var(--bg-sunken);
+  }
+
+  :global(.modal-body) {
+    overflow-y: auto;
+    flex: 1;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  :global(.modal-empty) {
+    color: var(--fg-muted);
+    font-size: 14px;
+    text-align: center;
+    padding: 40px 0;
+    margin: 0;
+  }
+
+  :global(.modal-footer) {
+    border-top: 1px solid var(--border);
+    padding: 10px 20px;
+    font-size: 12px;
+    color: var(--fg-faint);
+    flex-shrink: 0;
+  }
+
+  :global(.icon-group) { display: flex; flex-direction: column; gap: 10px; }
+
+  :global(.icon-group-label) {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--fg-faint);
+  }
+
+  :global(.icon-grid) {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 8px;
+  }
+
+  :global(.icon-tile) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 6px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    cursor: default;
+    transition: background 120ms ease, border-color 120ms ease;
+    min-width: 0;
+  }
+  :global(.icon-tile:hover) {
+    background: color-mix(in srgb, var(--accent) 6%, var(--bg-sunken));
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  }
+
+  :global(.icon-preview) {
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    color: var(--fg);
+  }
+  :global(.icon-preview svg) {
+    width: 100%;
+    height: 100%;
+    max-width: 40px;
+    max-height: 40px;
+    fill: currentColor;
+  }
+
+  :global(.icon-name) {
+    font-size: 10.5px;
+    color: var(--fg-muted);
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: 100%;
+    line-height: 1.3;
   }
 </style>
