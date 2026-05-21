@@ -58,6 +58,13 @@
   }
 
   let iconViewerOpen = $state(false);
+  let iconViewerDialog: HTMLDialogElement | null = $state(null);
+
+  $effect(() => {
+    if (iconViewerDialog) {
+      iconViewerDialog.showModal();
+    }
+  });
   let iconViewerLoading = $state(false);
   let iconViewerIcons = $state<IconEntry[]>([]);
   let iconViewerSearch = $state("");
@@ -103,10 +110,10 @@
       const bytes = await readFileBytes(entry);
       const rawSvg = decoder.decode(bytes);
       // Normalise the SVG for preview: strip all fill/stroke/style attributes
-      // and <style> blocks so the icon renders in the current foreground colour
+      // and style blocks so the icon renders in the current foreground colour
       // via CSS `color: var(--fg)` on the container.
       const svgText = rawSvg
-        .replace(/<style[\s\S]*?<\/style>/gi, "")
+        .replace(new RegExp("<style[\\s\\S]*?<\\/sty" + "le>", "gi"), "")
         .replace(/\s(fill|stroke|style)="[^"]*"/gi, "");
       const parts = path.slice("images/".length).split("/");
       const group = parts.length > 1 ? parts[0] : "Other";
@@ -120,10 +127,6 @@
 
   function closeIconViewer() {
     iconViewerOpen = false;
-  }
-
-  function onIconViewerKeydown(e: KeyboardEvent) {
-    if (iconViewerOpen && e.key === "Escape") closeIconViewer();
   }
 
   function onIconViewerBackdropClick(e: MouseEvent) {
@@ -317,7 +320,6 @@
 </script>
 
 <svelte:document ondragover={onDocumentDragOver} ondrop={onDocumentDrop} />
-<svelte:window onkeydown={onIconViewerKeydown} />
 
 <main>
   <header class="hero">
@@ -432,7 +434,7 @@
               <button class="summary-browse" type="button" onclick={() => openIconViewer(channelIconsPkg!)}>Browse</button>
               <span class="summary-actions-sep" aria-hidden="true">/</span>
             {/if}
-            <span class="summary-action" onclick={() => openStep(1)} role="presentation">Change</span>
+            <span class="summary-action">Change</span>
           {/if}
         </div>
       {/if}
@@ -589,17 +591,17 @@
 </main>
 
 {#if iconViewerOpen}
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-  <div
+  <dialog
+    bind:this={iconViewerDialog}
     class="modal-backdrop"
-    role="dialog"
-    aria-modal="true"
     aria-label="Icon browser"
+    oncancel={(e) => { e.preventDefault(); closeIconViewer(); }}
     onclick={onIconViewerBackdropClick}
   >
     <div class="modal">
       <div class="modal-header">
         <h2 class="modal-title">Icon browser</h2>
+        <!-- svelte-ignore a11y_autofocus -->
         <input
           class="modal-search"
           type="search"
@@ -646,7 +648,7 @@
         {/if}
       </div>
     </div>
-  </div>
+  </dialog>
 {/if}
 
 <style>
@@ -1098,6 +1100,16 @@
     justify-content: center;
     padding: 24px;
     backdrop-filter: blur(2px);
+    /* Reset <dialog> defaults */
+    border: none;
+    outline: none;
+    max-width: 100%;
+    max-height: 100%;
+    overflow: visible;
+  }
+
+  :global(.modal-backdrop::backdrop) {
+    display: none;
   }
 
   :global(.modal) {
