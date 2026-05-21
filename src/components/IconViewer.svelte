@@ -100,7 +100,7 @@
       <input
         class="modal-search"
         type="search"
-        placeholder="Search icons…"
+        placeholder="Search icons..."
         bind:value={search}
         autocomplete="off"
         spellcheck="false"
@@ -113,7 +113,7 @@
 
     <div class="modal-body">
       {#if loading}
-        <p class="modal-empty">Loading icons…</p>
+        <p class="modal-empty">Loading icons...</p>
       {:else if groups.length === 0}
         <p class="modal-empty">No icons match "{search}".</p>
       {:else}

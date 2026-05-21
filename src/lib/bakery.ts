@@ -141,19 +141,20 @@ export async function validateModuleTgz(tgzFile: File): Promise<ModuleTgzCheck> 
 
 export async function bake(inputs: BakeInputs): Promise<BakeResult> {
   const { channelIconsFile, tgzFile, onProgress } = inputs;
-  const progress = (s: string) => onProgress?.(s);
+  const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+  const progress = async (s: string) => { onProgress?.(s); await delay(600); };
 
   // 1. Parse + sanity-check the channel-icons input (raw .skin or DLL).
-  progress("Parsing channel icons…");
+  await progress("Parsing channel icons...");
   const { pkg, source } = await validateChannelIconsPackagef(channelIconsFile);
 
   // 2. Unpack the user-supplied tarball + validate manifest.
-  progress("Unpacking module .tgz…");
+  await progress("Unpacking module .tgz...");
   const { files: tarFiles, manifest } = await validateModuleTgz(tgzFile);
 
   // 3. Walk every SVG in the .skin, tokenize, and add (or replace) it
   //    in the tar file list. Collisions on the target path throw.
-  progress("Tokenizing icons…");
+  await progress("Preparing icons...");
   const decoder = new TextDecoder("utf-8");
   const iconsAdded = new Map<string, TarFile>();
 
@@ -201,7 +202,7 @@ export async function bake(inputs: BakeInputs): Promise<BakeResult> {
   const merged = mergeFiles(tarFiles, additions);
 
   // 6. Repack and gzip.
-  progress("Packing baked .tgz…");
+  progress("Packing baked .tgz...");
   const out = await packTgz(merged);
 
   return {

@@ -10,6 +10,7 @@
   import IconViewer from "./components/IconViewer.svelte";
   import StepMarker from "./components/StepMarker.svelte";
   import FileBox from "./components/FileBox.svelte";
+  import BakeLog from "./components/BakeLog.svelte";
 
   // ---------- platform detection ------------------------------------------
 
@@ -42,7 +43,7 @@
   let tgzManifest = $state<Manifest | null>(null);
 
   let busy = $state(false);
-  let status = $state("");
+  let logLines = $state<string[]>([]);
   let error = $state("");
   let result = $state<BakeResult | null>(null);
   let downloadUrl = $state("");
@@ -89,7 +90,7 @@
     clearResult();
     manualStep = null;
     error = "";
-    status = "";
+    logLines = [];
     if (!channelIconsFile) {
       channelIconsCheck = { kind: "idle" };
       channelIconsPkg = null;
@@ -118,7 +119,7 @@
     clearResult();
     manualStep = null;
     error = "";
-    status = "";
+    logLines = [];
     tgzManifest = null;
     if (!tgzFile) {
       tgzCheck = { kind: "idle" };
@@ -144,21 +145,20 @@
     if (!channelIconsFile || !tgzFile) return;
     busy = true;
     error = "";
-    status = "";
+    logLines = [];
     try {
       const r = await bake({
         channelIconsFile,
         tgzFile,
-        onProgress: msg => (status = msg),
+        onProgress: msg => { logLines = [...logLines, msg]; },
       });
       clearResult();
       result = r;
       downloadUrl = URL.createObjectURL(r.blob);
-      status = `Baked ${r.iconCount} icon${r.iconCount === 1 ? "" : "s"} into ${r.manifest.id}@${r.manifest.version}.`;
+      logLines = [...logLines, `Done — ${r.iconCount} icon${r.iconCount === 1 ? "" : "s"} baked into ${r.manifest.id}@${r.manifest.version}.`];
       manualStep = null;
     } catch (err) {
       error = (err as Error).message;
-      status = "";
     } finally {
       busy = false;
     }
@@ -218,13 +218,13 @@
       <span class="hero-subtitle">Icon bakery for Bitfocus Companion</span>
     </h1>
     <p class="lede">
-      Embeds vendor channel icons into the <a
+      Embeds channel icons into the <a
         href="https://github.com/featherbear/bitfocus-companion-module-presonus-studiolive"
         target="_blank"
         rel="noopener noreferrer"
       ><code>bitfocus-presonus-studiolive</code></a> module, because
-      we&rsquo;re not allowed to distribute them ourselves for legal
-      reasons. The icons are available as part of your PreSonus
+      we&rsquo;re not allowed to distribute vendor files, because... legal
+      reasons. The icons are available as part of a PreSonus
       Universal Control installation.
     </p>
   </header>
@@ -378,9 +378,7 @@
           <button class="cta" onclick={onBake} disabled={!canBake}>
             {busy ? "Baking\u2026" : downloadReady ? "Bake again" : "Bake module"}
           </button>
-          {#if status}
-            <p class="status">{status}</p>
-          {/if}
+          <BakeLog lines={logLines} />
           {#if error}
             <p class="alert err">{error}</p>
           {/if}
@@ -417,15 +415,15 @@
       {#if s4 === "active" && downloadReady && result}
         <div class="step-body">
           <h2>Download</h2>
+          <p class="alert warn above">
+            <strong>Do not redistribute this file.</strong> The embedded
+            icons are vendor assets from PreSonus. <br />A notice of this
+            bake has been added to the module file.
+          </p>
           <a class="cta cta-alt" href={downloadUrl} download={result.filename}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5l5-5"/><path d="M12 15V3"/></svg>
             Download {result.filename}
           </a>
-          <p class="alert warn">
-            <strong>Do not redistribute this file.</strong> The embedded
-            icons are vendor assets from PreSonus. A notice of this
-            bake has been added to the module file.
-          </p>
         </div>
       {:else}
         <div class="step-summary step-summary-static">
@@ -758,12 +756,7 @@
     background: var(--bg-sunken);
   }
 
-  /* ---------------- status / alerts ---------------- */
-  .status {
-    color: var(--fg-muted);
-    margin: 14px 0 0;
-    font-size: 13.5px;
-  }
+  /* ---------------- alerts ---------------- */
   .alert {
     margin: 16px 0 0;
     padding: 12px 14px;
@@ -771,6 +764,7 @@
     font-size: 13.5px;
     line-height: 1.55;
   }
+  .alert.above { margin: 0 0 16px; }
   .alert.warn { background: var(--warn-bg); color: var(--warn); }
   .alert.err  { background: var(--err-bg);  color: var(--err);  white-space: pre-wrap; }
   .alert code {

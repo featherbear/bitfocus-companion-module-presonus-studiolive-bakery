@@ -11,7 +11,7 @@
 //   1. `<style>` CSS rules (`.st0 { fill: #0211FF }`, etc.)
 //   2. Inline `style="fill:#0211FF"` attributes
 //   3. `fill="#0211FF"` presentation attributes (skipping `none` and
-//      `url(#…)` references, which point at gradients/patterns).
+//      `url(#...)` references, which point at gradients/patterns).
 
 /** Sentinel value the runtime will replaceAll() with the real fill color. */
 export const FILL_TOKEN = "#deadbe";
