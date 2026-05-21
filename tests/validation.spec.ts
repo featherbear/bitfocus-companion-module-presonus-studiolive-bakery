@@ -105,12 +105,13 @@ test.describe("module .tgz validation", () => {
   });
 
   test("corrupt gzip is rejected gracefully", async ({ page }) => {
-    // Random bytes that don't form a valid gzip stream.
+    // Valid gzip magic bytes but corrupt contents.
     const bogus = Buffer.from([0x1f, 0x8b, 0xff, 0xff, 0xde, 0xad, 0xbe, 0xef]);
     await page.goto("/");
     await pickChannelIcons(page, "channelicons.skin", validSkin());
     await pickModuleTgz(page, "broken.tgz", bogus);
     await expect(pickerError(page, 2)).toBeVisible();
+    await expect(pickerSubText(page, 2)).toContainText(/corrupt or truncated/i);
   });
 
   test("non-gzip payload is rejected", async ({ page }) => {
@@ -118,6 +119,7 @@ test.describe("module .tgz validation", () => {
     await pickChannelIcons(page, "channelicons.skin", validSkin());
     await pickModuleTgz(page, "not-gzip.tgz", Buffer.from("definitely not gzip"));
     await expect(pickerError(page, 2)).toBeVisible();
+    await expect(pickerSubText(page, 2)).toContainText(/does not appear to be a \.tgz/i);
   });
 
   test("manifest is not JSON", async ({ page }) => {

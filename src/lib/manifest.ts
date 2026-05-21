@@ -22,7 +22,7 @@ export function validateManifest(files: TarFile[]): Manifest {
   const entry = files.find(f => f.name === MANIFEST_PATH);
   if (!entry) {
     throw new Error(
-      `Tarball is missing ${MANIFEST_PATH}. ` +
+      `File is missing ${MANIFEST_PATH}. ` +
       `Make sure you uploaded a Companion module .tgz, not something else.`,
     );
   }

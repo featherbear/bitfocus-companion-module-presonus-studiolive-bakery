@@ -222,7 +222,17 @@ function packTar(files: TarFile[]): Uint8Array {
 // ---------- public API ----------------------------------------------------
 
 export async function unpackTgz(buf: Uint8Array): Promise<TarFile[]> {
-  const tar = await gunzip(buf);
+  let tar: Uint8Array;
+  try {
+    tar = await gunzip(buf);
+  } catch {
+    // DecompressionStream throws a generic "The operation was aborted" DOMException
+    // for invalid gzip data. Emit something actionable instead.
+    if (buf.length < 2 || buf[0] !== 0x1f || buf[1] !== 0x8b) {
+      throw new Error("File does not appear to be a .tgz file");
+    }
+    throw new Error("File is a gzip archive but its contents are corrupt or truncated");
+  }
   return unpackTar(tar);
 }
 
