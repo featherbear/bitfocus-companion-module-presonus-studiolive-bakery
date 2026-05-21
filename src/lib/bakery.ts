@@ -106,8 +106,7 @@ export async function validateChannelIconsPackagef(
     source = "dll";
   } else {
     throw new Error(
-      `File is neither a PACKAGEF (.skin) container nor a Windows DLL ` +
-      `(no "PACKAGEF" or "MZ" header).`,
+      `File is neither a PACKAGEF (.skin) container nor a Windows DLL`,
     );
   }
 

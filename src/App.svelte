@@ -52,6 +52,47 @@
     result = null;
   }
 
+  function onChannelIconsDrop(e: DragEvent) {
+    e.preventDefault();
+    if (busy) return;
+    const file = e.dataTransfer?.files?.[0] ?? null;
+    if (!file) return;
+    // Simulate a change event with the dropped file
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    const input = (e.currentTarget as HTMLElement).querySelector('input[type="file"]') as HTMLInputElement;
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function onTgzDrop(e: DragEvent) {
+    e.preventDefault();
+    if (busy) return;
+    const file = e.dataTransfer?.files?.[0] ?? null;
+    if (!file) return;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    const input = (e.currentTarget as HTMLElement).querySelector('input[type="file"]') as HTMLInputElement;
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function onDragOver(e: DragEvent) {
+    e.preventDefault();
+  }
+
+  /** Prevent the browser from navigating to a dropped file outside a drop zone. */
+  function onDocumentDragOver(e: DragEvent) {
+    if ((e.target as Element | null)?.closest(".filebox")) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "none";
+  }
+
+  function onDocumentDrop(e: DragEvent) {
+    if ((e.target as Element | null)?.closest(".filebox")) return;
+    e.preventDefault();
+  }
+
   async function onChannelIconsPicked(e: Event) {
     channelIconsFile = (e.target as HTMLInputElement).files?.[0] ?? null;
     clearResult();
@@ -184,6 +225,8 @@
   const DLL_PATH = "C:\\Program Files\\PreSonus\\Universal Control\\Plugins\\studiolivepanel.dll";
 </script>
 
+<svelte:document ondragover={onDocumentDragOver} ondrop={onDocumentDrop} />
+
 <main>
   <header class="hero">
     <h1>
@@ -236,7 +279,7 @@
             {/if}
           </p>
 
-          <label class="filebox" class:has-file={!!channelIconsFile}>
+          <label class="filebox" class:has-file={!!channelIconsFile} ondragover={onDragOver} ondrop={onChannelIconsDrop}>
             <input
               type="file"
               accept=".skin,.dll"
@@ -307,7 +350,7 @@
             >here</a>.
           </p>
 
-          <label class="filebox" class:has-file={!!tgzFile}>
+          <label class="filebox" class:has-file={!!tgzFile} ondragover={onDragOver} ondrop={onTgzDrop}>
             <input
               type="file"
               accept=".tgz,.gz,application/gzip"

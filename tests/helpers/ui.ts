@@ -3,6 +3,46 @@
 import type { Locator, Page } from "@playwright/test";
 
 /**
+ * Simulate a file drag-drop onto a CSS selector by dispatching real
+ * dragover + drop DragEvents in the browser context.
+ *
+ * Playwright cannot set DataTransfer.files directly (it's read-only), so we
+ * inject the bytes as a base64-encoded string, reconstruct a File inside the
+ * page, and attach it to the DataTransfer before dispatching the events.
+ */
+export async function dragDropFile(
+  page: Page,
+  selector: string,
+  name: string,
+  bytes: Uint8Array | Buffer,
+  mimeType = "application/octet-stream",
+): Promise<void> {
+  const base64 = Buffer.isBuffer(bytes)
+    ? bytes.toString("base64")
+    : Buffer.from(bytes).toString("base64");
+
+  await page.evaluate(
+    ({ selector, name, base64, mimeType }) => {
+      const el = document.querySelector(selector);
+      if (!el) throw new Error(`dragDropFile: no element matches "${selector}"`);
+
+      // Decode base64 → Uint8Array → File
+      const bin = atob(base64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const file = new File([arr], name, { type: mimeType });
+
+      const dt = new DataTransfer();
+      dt.items.add(file);
+
+      el.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt }));
+      el.dispatchEvent(new DragEvent("drop",     { bubbles: true, cancelable: true, dataTransfer: dt }));
+    },
+    { selector, name, base64, mimeType },
+  );
+}
+
+/**
  * Set the channel-icons file input via the file picker. Accepts raw
  * bytes + a filename so callers can drive both .skin and .dll cases.
  */
