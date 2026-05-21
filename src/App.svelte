@@ -101,7 +101,7 @@
     try {
       const { iconCount, source, pkg } = await validateChannelIconsPackagef(channelIconsFile);
       if (myToken !== channelIconsToken) return;
-      const sourceLabel = source === "dll" ? "DLL" : ".skin";
+      const sourceLabel = source === "dll" ? "DLL" : "skin";
       channelIconsPkg = pkg;
       channelIconsCheck = {
         kind: "ok",
@@ -242,7 +242,7 @@
               On macOS, this lives at:<br />
               <code class="path">{SKIN_PATH}</code>
             {:else if platform === "windows"}
-              On Windows, pick the studiolivepanel.dll at:<br />
+              On Windows, pick the studiolivepanel.dll file at:<br />
               <code class="path">{DLL_PATH}</code><br />
               Required assets are automatically extracted.
             {:else}
