@@ -264,7 +264,7 @@
               On macOS, this lives at:<br />
               <code class="path">{SKIN_PATH}</code>
             {:else if platform === "windows"}
-              On Windows, pick the StudioLive panel DLL at:<br />
+              On Windows, pick the studiolivepanel.dll at:<br />
               <code class="path">{DLL_PATH}</code><br />
               Required assets are automatically extracted.
             {:else}
