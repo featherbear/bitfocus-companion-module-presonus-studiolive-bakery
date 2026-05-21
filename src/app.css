@@ -125,3 +125,7 @@ button {
 ::selection {
   background: color-mix(in srgb, var(--accent) 35%, transparent);
 }
+
+body:has(dialog[open]) {
+  overflow: hidden;
+}

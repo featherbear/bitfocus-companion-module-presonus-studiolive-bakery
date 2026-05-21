@@ -5,8 +5,11 @@
     validateModuleTgz,
     type BakeResult,
   } from "./lib/bakery";
-  import { walk, readFileBytes, type SkinPackage } from "./lib/packagef";
+  import type { SkinPackage } from "./lib/packagef";
   import type { Manifest } from "./lib/manifest";
+  import IconViewer from "./components/IconViewer.svelte";
+  import StepMarker from "./components/StepMarker.svelte";
+  import FileBox from "./components/FileBox.svelte";
 
   // ---------- platform detection ------------------------------------------
 
@@ -50,125 +53,18 @@
 
   // ---------- icon viewer -------------------------------------------------
 
-  interface IconEntry {
-    path: string;       // e.g. "images/Brass/Trumpet.svg"
-    group: string;      // e.g. "Brass"
-    name: string;       // e.g. "Trumpet.svg"
-    svgText: string;    // decoded SVG markup
-  }
-
-  let iconViewerOpen = $state(false);
-  let iconViewerDialog: HTMLDialogElement | null = $state(null);
-
-  $effect(() => {
-    if (iconViewerDialog) {
-      iconViewerDialog.showModal();
-    }
-  });
-  let iconViewerLoading = $state(false);
-  let iconViewerIcons = $state<IconEntry[]>([]);
-  let iconViewerSearch = $state("");
-  // The SkinPackage we loaded icons from — so we can detect when it changes.
   let iconViewerPkg = $state<SkinPackage | null>(null);
 
-  const iconViewerFiltered = $derived(
-    iconViewerSearch.trim() === ""
-      ? iconViewerIcons
-      : (() => {
-          const q = iconViewerSearch.trim().toLowerCase();
-          return iconViewerIcons.filter(
-            i => i.name.toLowerCase().includes(q) || i.group.toLowerCase().includes(q),
-          );
-        })(),
-  );
-
-  // Group the filtered icons by their folder name.
-  const iconViewerGroups = $derived(
-    (() => {
-      const map = new Map<string, IconEntry[]>();
-      for (const icon of iconViewerFiltered) {
-        const list = map.get(icon.group);
-        if (list) list.push(icon);
-        else map.set(icon.group, [icon]);
-      }
-      return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-    })(),
-  );
-
-  async function openIconViewer(pkg: SkinPackage) {
-    iconViewerOpen = true;
-    iconViewerSearch = "";
-    // Only reload if the package has changed.
-    if (pkg === iconViewerPkg) return;
+  function openIconViewer(pkg: SkinPackage) {
     iconViewerPkg = pkg;
-    iconViewerIcons = [];
-    iconViewerLoading = true;
-    const decoder = new TextDecoder("utf-8");
-    const icons: IconEntry[] = [];
-    for (const { path, entry } of walk(pkg.root)) {
-      if (!path.startsWith("images/") || !path.toLowerCase().endsWith(".svg")) continue;
-      const bytes = await readFileBytes(entry);
-      const rawSvg = decoder.decode(bytes);
-      // Normalise the SVG for preview: strip all fill/stroke/style attributes
-      // and style blocks so the icon renders in the current foreground colour
-      // via CSS `color: var(--fg)` on the container.
-      const svgText = rawSvg
-        .replace(new RegExp("<style[\\s\\S]*?<\\/sty" + "le>", "gi"), "")
-        .replace(/\s(fill|stroke|style)="[^"]*"/gi, "");
-      const parts = path.slice("images/".length).split("/");
-      const group = parts.length > 1 ? parts[0] : "Other";
-      const name = parts[parts.length - 1];
-      icons.push({ path, group, name, svgText });
-    }
-    icons.sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
-    iconViewerIcons = icons;
-    iconViewerLoading = false;
   }
 
   function closeIconViewer() {
-    iconViewerOpen = false;
+    iconViewerPkg = null;
   }
 
-  function onIconViewerBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) closeIconViewer();
-  }
+  // ---------- drag / drop -------------------------------------------------
 
-  function clearResult() {
-    if (downloadUrl) URL.revokeObjectURL(downloadUrl);
-    downloadUrl = "";
-    result = null;
-  }
-
-  function onChannelIconsDrop(e: DragEvent) {
-    e.preventDefault();
-    if (busy) return;
-    const file = e.dataTransfer?.files?.[0] ?? null;
-    if (!file) return;
-    // Simulate a change event with the dropped file
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    const input = (e.currentTarget as HTMLElement).querySelector('input[type="file"]') as HTMLInputElement;
-    input.files = dt.files;
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  function onTgzDrop(e: DragEvent) {
-    e.preventDefault();
-    if (busy) return;
-    const file = e.dataTransfer?.files?.[0] ?? null;
-    if (!file) return;
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    const input = (e.currentTarget as HTMLElement).querySelector('input[type="file"]') as HTMLInputElement;
-    input.files = dt.files;
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  function onDragOver(e: DragEvent) {
-    e.preventDefault();
-  }
-
-  /** Prevent the browser from navigating to a dropped file outside a drop zone. */
   function onDocumentDragOver(e: DragEvent) {
     if ((e.target as Element | null)?.closest(".filebox")) return;
     e.preventDefault();
@@ -178,6 +74,14 @@
   function onDocumentDrop(e: DragEvent) {
     if ((e.target as Element | null)?.closest(".filebox")) return;
     e.preventDefault();
+  }
+
+  // ---------- file pick handlers ------------------------------------------
+
+  function clearResult() {
+    if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+    downloadUrl = "";
+    result = null;
   }
 
   async function onChannelIconsPicked(e: Event) {
@@ -241,20 +145,17 @@
     busy = true;
     error = "";
     status = "";
-    // Don't clear the previous result yet — keep step 4 visible with the
-    // old download while the new bake runs, so the user isn't left on step 3.
     try {
       const r = await bake({
         channelIconsFile,
         tgzFile,
         onProgress: msg => (status = msg),
       });
-      // New bake succeeded — now swap out the old result.
       clearResult();
       result = r;
       downloadUrl = URL.createObjectURL(r.blob);
       status = `Baked ${r.iconCount} icon${r.iconCount === 1 ? "" : "s"} into ${r.manifest.id}@${r.manifest.version}.`;
-      manualStep = null; // let naturalStep (now 4) drive navigation to Download
+      manualStep = null;
     } catch (err) {
       error = (err as Error).message;
       status = "";
@@ -270,31 +171,16 @@
   const canBake = $derived(step1Ok && step2Ok && !busy);
   const downloadReady = $derived(!!result && !!downloadUrl);
 
-  // The "natural" current step (first incomplete one).
   const naturalStep = $derived(
     downloadReady ? 4 : !step1Ok ? 1 : !step2Ok ? 2 : 3,
   );
 
-  // User can override the active step by clicking "Change" on a
-  // completed one. Cleared automatically when the user re-picks a
-  // file in onChannelIconsPicked / onTgzPicked.
   let manualStep = $state<number | null>(null);
-
   const activeStep = $derived(manualStep ?? naturalStep);
 
-  function openStep(n: number) {
-    manualStep = n;
-  }
+  function openStep(n: number) { manualStep = n; }
+  function closeStep() { manualStep = null; }
 
-  function closeStep() {
-    manualStep = null;
-  }
-
-  /**
-   * True when the user has manually opened a step that was already
-   * complete. In that case we surface a "Done" button so they can
-   * collapse the step without having to pick a new file.
-   */
   function isReopened(n: number, complete: boolean): boolean {
     return manualStep === n && complete;
   }
@@ -321,6 +207,10 @@
 
 <svelte:document ondragover={onDocumentDragOver} ondrop={onDocumentDrop} />
 
+{#if iconViewerPkg}
+  <IconViewer pkg={iconViewerPkg} onclose={closeIconViewer} />
+{/if}
+
 <main>
   <header class="hero">
     <h1>
@@ -342,13 +232,7 @@
   <ol class="steps">
     <!-- ============================== Step 1 ============================== -->
     <li class="step state-{s1}">
-      <div class="step-marker" aria-hidden="true">
-        {#if s1 === "done"}
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 7"/></svg>
-        {:else}
-          <span>1</span>
-        {/if}
-      </div>
+      <StepMarker n={1} state={s1} />
 
       {#if s1 === "active"}
         <div class="step-body">
@@ -373,33 +257,19 @@
             {/if}
           </p>
 
-          <label class="filebox" class:has-file={!!channelIconsFile} ondragover={onDragOver} ondrop={onChannelIconsDrop}>
-            <input
-              type="file"
-              accept=".skin,.dll"
-              onchange={onChannelIconsPicked}
-              disabled={busy}
-            />
-            <span class="filebox-icon" aria-hidden="true">
+          <FileBox
+            file={channelIconsFile}
+            accept=".skin,.dll"
+            disabled={busy}
+            check={channelIconsCheck}
+            placeholder="Choose a channelicons.skin or studiolivepanel.dll file"
+            onchange={onChannelIconsPicked}
+          >
+            {#snippet icon()}
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>
-            </span>
-            <span class="filebox-text">
-              <span class="filebox-title">
-                {channelIconsFile?.name ?? "Choose a channelicons.skin or studiolivepanel.dll file"}
-              </span>
-              <span class="filebox-sub">
-                {#if channelIconsCheck.kind === "checking"}
-                  Checking&hellip;
-                {:else if channelIconsCheck.kind === "ok"}
-                  <span class="badge ok">OK</span> {channelIconsCheck.detail}
-                {:else if channelIconsCheck.kind === "error"}
-                  <span class="badge err">Error</span> {channelIconsCheck.message}
-                {:else}
-                  Click to browse, or drag a file here.
-                {/if}
-              </span>
-            </span>
-          </label>
+            {/snippet}
+          </FileBox>
+
           {#if isReopened(1, step1Ok) || step1Ok}
             <div class="step-actions">
               {#if step1Ok && channelIconsPkg}
@@ -434,7 +304,7 @@
               <button class="summary-browse" type="button" onclick={() => openIconViewer(channelIconsPkg!)}>Browse</button>
               <span class="summary-actions-sep" aria-hidden="true">/</span>
             {/if}
-            <span class="summary-action">Change</span>
+            <button class="summary-action" type="button" onclick={() => openStep(1)}>Change</button>
           {/if}
         </div>
       {/if}
@@ -442,13 +312,7 @@
 
     <!-- ============================== Step 2 ============================== -->
     <li class="step state-{s2}">
-      <div class="step-marker" aria-hidden="true">
-        {#if s2 === "done"}
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 7"/></svg>
-        {:else}
-          <span>2</span>
-        {/if}
-      </div>
+      <StepMarker n={2} state={s2} />
 
       {#if s2 === "active"}
         <div class="step-body">
@@ -461,33 +325,19 @@
             >here</a>.
           </p>
 
-          <label class="filebox" class:has-file={!!tgzFile} ondragover={onDragOver} ondrop={onTgzDrop}>
-            <input
-              type="file"
-              accept=".tgz,.gz,application/gzip"
-              onchange={onTgzPicked}
-              disabled={busy}
-            />
-            <span class="filebox-icon" aria-hidden="true">
+          <FileBox
+            file={tgzFile}
+            accept=".tgz,.gz,application/gzip"
+            disabled={busy}
+            check={tgzCheck}
+            placeholder="Choose a .tgz file"
+            onchange={onTgzPicked}
+          >
+            {#snippet icon()}
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></svg>
-            </span>
-            <span class="filebox-text">
-              <span class="filebox-title">
-                {tgzFile?.name ?? "Choose a .tgz file"}
-              </span>
-              <span class="filebox-sub">
-                {#if tgzCheck.kind === "checking"}
-                  Checking&hellip;
-                {:else if tgzCheck.kind === "ok"}
-                  <span class="badge ok">OK</span> {tgzCheck.detail}
-                {:else if tgzCheck.kind === "error"}
-                  <span class="badge err">Error</span> {tgzCheck.message}
-                {:else}
-                  Click to browse, or drag a file here.
-                {/if}
-              </span>
-            </span>
-          </label>
+            {/snippet}
+          </FileBox>
+
           {#if isReopened(2, step2Ok)}
             <div class="step-actions">
               <button class="btn-ghost" type="button" onclick={closeStep}>
@@ -497,29 +347,29 @@
           {/if}
         </div>
       {:else}
-        <button class="step-summary" type="button" onclick={() => openStep(2)} disabled={s2 === "locked"}>
-          <span class="summary-title">PreSonus StudioLive module file
-            {#if s2 === "done" && tgzCheck.kind === "ok"}
-              <span class="summary-meta">{tgzCheck.detail}</span>
-            {/if}
-          </span>
-          {#if s2 === "done" && tgzFile}
-            <span class="summary-detail">{tgzFile.name}</span>
+        <div class="step-summary-row">
+          <button class="step-summary" type="button" onclick={() => openStep(2)} disabled={s2 === "locked"}>
+            <span class="summary-text">
+              <span class="summary-title">PreSonus StudioLive module file
+                {#if s2 === "done" && tgzCheck.kind === "ok"}
+                  <span class="summary-meta">{tgzCheck.detail}</span>
+                {/if}
+              </span>
+              {#if s2 === "done" && tgzFile}
+                <span class="summary-detail">{tgzFile.name}</span>
+              {/if}
+            </span>
+          </button>
+          {#if s2 === "done"}
+            <button class="summary-action" type="button" onclick={() => openStep(2)}>Change</button>
           {/if}
-          {#if s2 === "done"}<span class="summary-action">Change</span>{/if}
-        </button>
+        </div>
       {/if}
     </li>
 
     <!-- ============================== Step 3 ============================== -->
     <li class="step state-{s3}">
-      <div class="step-marker" aria-hidden="true">
-        {#if s3 === "done"}
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 7"/></svg>
-        {:else}
-          <span>3</span>
-        {/if}
-      </div>
+      <StepMarker n={3} state={s3} />
 
       {#if s3 === "active"}
         <div class="step-body">
@@ -543,26 +393,26 @@
           {/if}
         </div>
       {:else}
-        <button class="step-summary" type="button" onclick={() => openStep(3)} disabled={s3 === "locked"}>
-          <span class="summary-title">Bake the module
-            {#if s3 === "done" && result}
-              <span class="summary-meta">{result.iconCount} icon{result.iconCount === 1 ? "" : "s"}</span>
-            {/if}
-          </span>
-          {#if s3 === "done"}<span class="summary-action">Bake again</span>{/if}
-        </button>
+        <div class="step-summary-row">
+          <button class="step-summary" type="button" onclick={() => openStep(3)} disabled={s3 === "locked"}>
+            <span class="summary-text">
+              <span class="summary-title">Bake the module
+                {#if s3 === "done" && result}
+                  <span class="summary-meta">{result.iconCount} icon{result.iconCount === 1 ? "" : "s"}</span>
+                {/if}
+              </span>
+            </span>
+          </button>
+          {#if s3 === "done"}
+            <button class="summary-action" type="button" onclick={() => openStep(3)}>Bake again</button>
+          {/if}
+        </div>
       {/if}
     </li>
 
     <!-- ============================== Step 4 ============================== -->
     <li class="step state-{s4}">
-      <div class="step-marker" aria-hidden="true">
-        {#if s4 === "done"}
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 7"/></svg>
-        {:else}
-          <span>4</span>
-        {/if}
-      </div>
+      <StepMarker n={4} state={s4} />
 
       {#if s4 === "active" && downloadReady && result}
         <div class="step-body">
@@ -589,67 +439,6 @@
     <p>Everything runs locally. Nothing leaves your browser.</p>
   </footer>
 </main>
-
-{#if iconViewerOpen}
-  <dialog
-    bind:this={iconViewerDialog}
-    class="modal-backdrop"
-    aria-label="Icon browser"
-    oncancel={(e) => { e.preventDefault(); closeIconViewer(); }}
-    onclick={onIconViewerBackdropClick}
-  >
-    <div class="modal">
-      <div class="modal-header">
-        <h2 class="modal-title">Icon browser</h2>
-        <!-- svelte-ignore a11y_autofocus -->
-        <input
-          class="modal-search"
-          type="search"
-          placeholder="Search icons…"
-          bind:value={iconViewerSearch}
-          autocomplete="off"
-          spellcheck="false"
-          autofocus
-        />
-        <button class="modal-close" type="button" onclick={closeIconViewer} aria-label="Close">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        {#if iconViewerLoading}
-          <p class="modal-empty">Loading icons…</p>
-        {:else if iconViewerGroups.length === 0}
-          <p class="modal-empty">No icons match "{iconViewerSearch}".</p>
-        {:else}
-          {#each iconViewerGroups as [group, icons]}
-            <div class="icon-group">
-              <h3 class="icon-group-label">{group}</h3>
-              <div class="icon-grid">
-                {#each icons as icon}
-                  <div class="icon-tile" title={icon.name.replace(/\.svg$/i, "")}>
-                    <div class="icon-preview">
-                      <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                      {@html icon.svgText}
-                    </div>
-                    <span class="icon-name">{icon.name.replace(/\.svg$/i, "")}</span>
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/each}
-        {/if}
-      </div>
-
-      <div class="modal-footer">
-        {iconViewerIcons.length} icon{iconViewerIcons.length === 1 ? "" : "s"} total
-        {#if iconViewerSearch.trim()}
-          &nbsp;&middot;&nbsp; {iconViewerFiltered.length} match{iconViewerFiltered.length === 1 ? "" : "es"}
-        {/if}
-      </div>
-    </div>
-  </dialog>
-{/if}
 
 <style>
   main {
@@ -710,8 +499,6 @@
     transition: border-color 160ms ease, box-shadow 160ms ease,
                 opacity 160ms ease, padding 160ms ease, background 160ms ease;
   }
-
-  /* Active step: emphatic frame, gradient ring, deep shadow */
   .step.state-active {
     padding: 28px 28px;
     border-color: color-mix(in srgb, var(--accent) 60%, transparent);
@@ -720,15 +507,11 @@
       var(--shadow-md);
     background: var(--bg-elev);
   }
-
-  /* Done step: muted but readable */
   .step.state-done {
     background: var(--bg-sunken);
     border-color: var(--border);
     box-shadow: none;
   }
-
-  /* Locked step: clearly inactive */
   .step.state-locked {
     background: transparent;
     border-style: dashed;
@@ -737,7 +520,8 @@
     box-shadow: none;
   }
 
-  .step-marker {
+  /* Step marker — styles apply to StepMarker's root .step-marker div via parent context */
+  :global(.step-marker) {
     width: 36px;
     height: 36px;
     border-radius: 50%;
@@ -753,7 +537,7 @@
     transition: background 160ms ease, color 160ms ease, border-color 160ms ease,
                 box-shadow 160ms ease, transform 160ms ease;
   }
-  .state-active .step-marker {
+  :global(.state-active .step-marker) {
     width: 40px;
     height: 40px;
     background: var(--gradient);
@@ -761,12 +545,12 @@
     border: none;
     box-shadow: var(--shadow-glow);
   }
-  .state-done .step-marker {
+  :global(.state-done .step-marker) {
     background: var(--gradient);
     color: white;
     border: none;
   }
-  .state-locked .step-marker {
+  :global(.state-locked .step-marker) {
     background: transparent;
     border-style: dashed;
   }
@@ -778,7 +562,7 @@
     letter-spacing: -0.01em;
   }
 
-  /* Collapsed summary row (used for done/locked) */
+  /* Collapsed summary row */
   .step-summary {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -834,6 +618,11 @@
     white-space: nowrap;
   }
   .summary-action {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font-family: inherit;
     color: var(--accent);
     font-size: 13px;
     font-weight: 600;
@@ -841,6 +630,7 @@
     text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
     text-underline-offset: 2px;
     flex-shrink: 0;
+    cursor: pointer;
   }
   .summary-browse {
     background: none;
@@ -876,9 +666,6 @@
   .step-summary-row .step-summary {
     flex: 1;
     min-width: 0;
-  }
-  /* When inside the summary row the step-summary only needs to show text, no action column */
-  .step-summary-row .step-summary {
     display: block;
   }
   .summary-text {
@@ -916,74 +703,6 @@
     cursor: pointer;
   }
   .link-button:hover { text-decoration-color: var(--accent); }
-
-  /* ---------------- filebox ---------------- */
-  .filebox {
-    display: grid;
-    grid-template-columns: 44px 1fr;
-    gap: 14px;
-    align-items: center;
-    padding: 16px 18px;
-    background: var(--bg-sunken);
-    border: 1.5px dashed var(--border-strong);
-    border-radius: var(--radius);
-    cursor: pointer;
-    transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
-  }
-  .filebox:hover {
-    border-color: color-mix(in srgb, var(--accent) 60%, var(--border-strong));
-    background: color-mix(in srgb, var(--accent) 4%, var(--bg-sunken));
-  }
-  .filebox.has-file {
-    border-style: solid;
-    background: var(--bg-elev);
-  }
-  .filebox input[type="file"] {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
-    pointer-events: none;
-  }
-  .filebox-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: var(--radius-sm);
-    background: var(--gradient);
-    color: white;
-    display: grid;
-    place-items: center;
-    box-shadow: var(--shadow-sm);
-  }
-  .filebox-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .filebox-title {
-    font-weight: 600;
-    font-size: 15px;
-    color: var(--fg);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .filebox-sub {
-    color: var(--fg-muted);
-    font-size: 13px;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .badge {
-    display: inline-block;
-    padding: 1px 8px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-  .badge.ok  { background: var(--ok-bg);  color: var(--ok); }
-  .badge.err { background: var(--err-bg); color: var(--err); }
 
   /* ---------------- CTAs ---------------- */
   .cta {
@@ -1077,191 +796,6 @@
       padding: 18px 16px;
       gap: 14px;
     }
-    .step-marker { width: 32px; height: 32px; font-size: 13px; }
-    .filebox { padding: 14px; }
-    .modal { width: 100%; height: 100%; max-width: 100%; border-radius: 0; }
-    .icon-grid { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
-  }
-
-  /* ---------------- btn-ghost small variant ---------------- */
-  .btn-ghost-sm {
-    padding: 5px 12px;
-    font-size: 12px;
-  }
-
-  /* ---------------- icon viewer modal ---------------- */
-  :global(.modal-backdrop) {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    background: rgba(0, 0, 0, 0.55);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    backdrop-filter: blur(2px);
-    /* Reset <dialog> defaults */
-    border: none;
-    outline: none;
-    max-width: 100%;
-    max-height: 100%;
-    overflow: visible;
-  }
-
-  :global(.modal-backdrop::backdrop) {
-    display: none;
-  }
-
-  :global(.modal) {
-    background: var(--bg-elev);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
-    width: 100%;
-    max-width: 760px;
-    max-height: 80vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  :global(.modal-header) {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 18px 20px 14px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  :global(.modal-title) {
-    margin: 0;
-    font-size: 17px;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    color: var(--fg);
-    flex-shrink: 0;
-  }
-
-  :global(.modal-search) {
-    flex: 1;
-    background: var(--bg-sunken);
-    border: 1px solid var(--border-strong);
-    border-radius: 999px;
-    padding: 7px 14px;
-    font-size: 13.5px;
-    font-family: inherit;
-    color: var(--fg);
-    outline: none;
-    transition: border-color 140ms ease, box-shadow 140ms ease;
-    min-width: 0;
-  }
-  :global(.modal-search:focus) {
-    border-color: var(--accent);
-    box-shadow: var(--shadow-glow);
-  }
-  :global(.modal-search::placeholder) { color: var(--fg-faint); }
-
-  :global(.modal-close) {
-    background: none;
-    border: none;
-    color: var(--fg-muted);
-    cursor: pointer;
-    padding: 6px;
-    border-radius: var(--radius-sm);
-    display: grid;
-    place-items: center;
-    flex-shrink: 0;
-    transition: color 120ms ease, background 120ms ease;
-  }
-  :global(.modal-close:hover) {
-    color: var(--fg);
-    background: var(--bg-sunken);
-  }
-
-  :global(.modal-body) {
-    overflow-y: auto;
-    flex: 1;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-  }
-
-  :global(.modal-empty) {
-    color: var(--fg-muted);
-    font-size: 14px;
-    text-align: center;
-    padding: 40px 0;
-    margin: 0;
-  }
-
-  :global(.modal-footer) {
-    border-top: 1px solid var(--border);
-    padding: 10px 20px;
-    font-size: 12px;
-    color: var(--fg-faint);
-    flex-shrink: 0;
-  }
-
-  :global(.icon-group) { display: flex; flex-direction: column; gap: 10px; }
-
-  :global(.icon-group-label) {
-    margin: 0;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    color: var(--fg-faint);
-  }
-
-  :global(.icon-grid) {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
-    gap: 8px;
-  }
-
-  :global(.icon-tile) {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 6px 8px;
-    border-radius: var(--radius-sm);
-    background: var(--bg-sunken);
-    border: 1px solid var(--border);
-    cursor: default;
-    transition: background 120ms ease, border-color 120ms ease;
-    min-width: 0;
-  }
-  :global(.icon-tile:hover) {
-    background: color-mix(in srgb, var(--accent) 6%, var(--bg-sunken));
-    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-  }
-
-  :global(.icon-preview) {
-    width: 40px;
-    height: 40px;
-    display: grid;
-    place-items: center;
-    color: var(--fg);
-  }
-  :global(.icon-preview svg) {
-    width: 100%;
-    height: 100%;
-    max-width: 40px;
-    max-height: 40px;
-    fill: currentColor;
-  }
-
-  :global(.icon-name) {
-    font-size: 10.5px;
-    color: var(--fg-muted);
-    text-align: center;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    width: 100%;
-    line-height: 1.3;
+    :global(.step-marker) { width: 32px; height: 32px; font-size: 13px; }
   }
 </style>
