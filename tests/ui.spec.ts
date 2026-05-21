@@ -123,6 +123,26 @@ test.describe("bake step UI", () => {
     await expect(stepBody(page, 3).getByRole("button", { name: "Bake again" })).toBeVisible();
   });
 
+  test("'Bake again' navigates to step 4 (Download) after completing", async ({ page }) => {
+    await page.goto("/");
+    await pickChannelIcons(page, "channelicons.skin", skin());
+    await pickModuleTgz(page, "module.tgz", buildModuleTgz());
+
+    // First bake — lands on step 4.
+    await page.getByRole("button", { name: "Bake module" }).click();
+    await expect(stepBody(page, 4).getByRole("link", { name: /Download/ })).toBeVisible();
+
+    // Reopen step 3 and bake again.
+    await stepSummary(page, 3).click();
+    const dlPromise = page.waitForEvent("download");
+    await stepBody(page, 3).getByRole("button", { name: "Bake again" }).click();
+
+    // Should navigate back to step 4 automatically.
+    await expect(stepBody(page, 4).getByRole("link", { name: /Download/ })).toBeVisible({ timeout: 10_000 });
+    await stepBody(page, 4).getByRole("link", { name: /Download/ }).click();
+    await dlPromise;
+  });
+
   test("the do-not-redistribute warning is shown in step 4", async ({ page }) => {
     await page.goto("/");
     await pickChannelIcons(page, "channelicons.skin", skin());

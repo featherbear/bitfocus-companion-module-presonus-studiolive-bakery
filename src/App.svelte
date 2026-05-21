@@ -151,16 +151,20 @@
     busy = true;
     error = "";
     status = "";
-    clearResult();
+    // Don't clear the previous result yet — keep step 4 visible with the
+    // old download while the new bake runs, so the user isn't left on step 3.
     try {
       const r = await bake({
         channelIconsFile,
         tgzFile,
         onProgress: msg => (status = msg),
       });
+      // New bake succeeded — now swap out the old result.
+      clearResult();
       result = r;
       downloadUrl = URL.createObjectURL(r.blob);
       status = `Baked ${r.iconCount} icon${r.iconCount === 1 ? "" : "s"} into ${r.manifest.id}@${r.manifest.version}.`;
+      manualStep = null; // let naturalStep (now 4) drive navigation to Download
     } catch (err) {
       error = (err as Error).message;
       status = "";
